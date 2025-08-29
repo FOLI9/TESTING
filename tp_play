@@ -1,0 +1,233 @@
+--[[ 
+  Player Teleport GUI
+  Место: StarterPlayer → StarterPlayerScripts
+  Показывает список всех игроков в сервере.
+  По клику на ник — телепорт к выбранному игроку.
+  Поддерживает сворачивание/разворачивание и полное закрытие.
+]]
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local running   = true
+local expanded  = true
+local connections = {}
+
+-- Утилита для безопасного подключения событий
+local function bind(event, fn)
+    local conn = event:Connect(function(...)
+        if running then
+            fn(...)
+        end
+    end)
+    table.insert(connections, conn)
+    return conn
+end
+
+-- Создаёт кнопку игрока в списке
+local function addPlayerBtn(p, parentFrame)
+    if p == player then return end
+    local btn = Instance.new("TextButton", parentFrame)
+    btn.Name              = p.Name
+    btn.Size              = UDim2.new(1, -4, 0, 28)
+    btn.Position          = UDim2.new(0, 2, 0, 0)
+    btn.BackgroundColor3  = Color3.fromRGB(0, 10, 0)
+    btn.BorderSizePixel   = 0
+    btn.Text              = p.Name
+    btn.TextColor3        = Color3.fromRGB(0, 255, 0)
+    btn.Font              = Enum.Font.Code
+    btn.TextSize          = 18
+
+    -- Подключаем телепорт
+    bind(btn.MouseButton1Click, function()
+        local targetChar = p.Character
+        local myChar     = player.Character
+        if targetChar and myChar then
+            local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+            local myHRP     = myChar:FindFirstChild("HumanoidRootPart")
+            if targetHRP and myHRP then
+                myHRP.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
+            end
+        end
+    end)
+
+    return btn
+end
+
+-- Удаляет кнопку игрока
+local function removePlayerBtn(p, parentFrame)
+    local btn = parentFrame:FindFirstChild(p.Name)
+    if btn then
+        btn:Destroy()
+    end
+end
+
+-- === GUI ===
+local gui = Instance.new("ScreenGui")
+gui.Name         = "TPGui"
+gui.ResetOnSpawn = false
+gui.Parent       = player:WaitForChild("PlayerGui")
+
+-- Основной фрейм
+local frame = Instance.new("Frame", gui)
+frame.Name             = "MainFrame"
+frame.Size             = UDim2.new(0, 240, 0, 300)
+frame.Position         = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(0, 5, 0)
+frame.BorderSizePixel  = 0
+frame.ClipsDescendants = true
+
+-- Обводка с псевдо-фликом
+local outline = Instance.new("UIStroke", frame)
+outline.Thickness    = 2
+outline.Color        = Color3.fromRGB(0, 255, 0)
+outline.Transparency = 0.4
+
+-- Заголовок (драг + кнопки)
+local header = Instance.new("Frame", frame)
+header.Name                = "Header"
+header.Size                = UDim2.new(1, 0, 0, 24)
+header.Position            = UDim2.new(0, 0, 0, 0)
+header.BackgroundTransparency = 1
+header.Active              = true
+
+local titleLabel = Instance.new("TextLabel", header)
+titleLabel.Text                   = "▢ PLAYER TP"
+titleLabel.Size                   = UDim2.new(1, -60, 1, 0)
+titleLabel.Position               = UDim2.new(0, 8, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3             = Color3.fromRGB(0, 255, 0)
+titleLabel.Font                   = Enum.Font.Code
+titleLabel.TextSize               = 18
+titleLabel.TextXAlignment         = Enum.TextXAlignment.Left
+
+-- Кнопка сворачивания / разворачивания
+local minimizeBtn = Instance.new("TextButton", header)
+minimizeBtn.Name             = "MinimizeBtn"
+minimizeBtn.Text             = "_"
+minimizeBtn.Size             = UDim2.new(0, 24, 0, 24)
+minimizeBtn.Position         = UDim2.new(1, -56, 0, 0)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(0, 15, 0)
+minimizeBtn.BorderSizePixel  = 0
+minimizeBtn.TextColor3       = Color3.fromRGB(0, 255, 0)
+minimizeBtn.Font             = Enum.Font.Code
+minimizeBtn.TextSize         = 18
+
+-- Кнопка закрытия
+local closeBtn = Instance.new("TextButton", header)
+closeBtn.Name             = "CloseBtn"
+closeBtn.Text             = "✕"
+closeBtn.Size             = UDim2.new(0, 24, 0, 24)
+closeBtn.Position         = UDim2.new(1, -28, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 0, 0)
+closeBtn.BorderSizePixel  = 0
+closeBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
+closeBtn.Font             = Enum.Font.Code
+closeBtn.TextSize         = 18
+
+-- Скролл для списка игроков
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Name                   = "PlayerList"
+scroll.Active                 = true
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel        = 0
+scroll.Position               = UDim2.new(0, 0, 0, 24)
+scroll.Size                   = UDim2.new(1, 0, 1, -24)
+scroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
+scroll.ScrollBarThickness     = 6
+
+local layout = Instance.new("UIListLayout", scroll)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding   = UDim.new(0, 2)
+
+-- Обновляет CanvasSize после изменения контента
+layout.Changed:Connect(function()
+    local contentHeight = layout.AbsoluteContentSize.Y + 4
+    scroll.CanvasSize = UDim2.new(0, 0, 0, contentHeight)
+end)
+
+-- Инициализация кнопок для уже существующих игроков
+for _, p in ipairs(Players:GetPlayers()) do
+    addPlayerBtn(p, scroll)
+end
+
+-- Добавление/удаление по событиям
+bind(Players.PlayerAdded, function(p)
+    addPlayerBtn(p, scroll)
+end)
+bind(Players.PlayerRemoving, function(p)
+    removePlayerBtn(p, scroll)
+end)
+
+-- Обработчик сворачивания/разворачивания
+bind(minimizeBtn.MouseButton1Click, function()
+    if expanded then
+        frame.Size = UDim2.new(0, 240, 0, 24)
+        scroll.Visible = false
+        minimizeBtn.Text = "▢"
+        expanded = false
+    else
+        frame.Size = UDim2.new(0, 240, 0, 300)
+        scroll.Visible = true
+        minimizeBtn.Text = "_"
+        expanded = true
+    end
+end)
+
+-- Обработчик закрытия
+bind(closeBtn.MouseButton1Click, function()
+    running = false
+    for _, conn in ipairs(connections) do
+        conn:Disconnect()
+    end
+    gui:Destroy()
+    script:Destroy()
+end)
+
+-- Перетаскивание окна
+local dragging, dragInput, dragStart, startPos
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+bind(header.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+bind(header.InputChanged, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+bind(UserInputService.InputChanged, function(input)
+    if dragging and input == dragInput then
+        updateDrag(input)
+    end
+end)
+
+-- Псевдо-фликер обводки
+task.spawn(function()
+    while running and RunService.Heartbeat:Wait() do
+        outline.Transparency = 0.3 + math.noise(tick() * 5) * 0.2
+    end
+end)
