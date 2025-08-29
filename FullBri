@@ -1,0 +1,203 @@
+--[[ 
+  Fullbright Hack
+  Место: StarterPlayer → StarterPlayerScripts
+]]
+
+local Players      = game:GetService("Players")
+local RunService   = game:GetService("RunService")
+local UserInput    = game:GetService("UserInputService")
+local Lighting     = game:GetService("Lighting")
+
+local player    = Players.LocalPlayer
+local running   = true
+local conns     = {}
+
+-- сохраняем оригинальные настройки освещения
+local original = {
+    Brightness      = Lighting.Brightness,
+    ClockTime       = Lighting.ClockTime,
+    GlobalShadows   = Lighting.GlobalShadows,
+    Ambient         = Lighting.Ambient,
+    OutdoorAmbient  = Lighting.OutdoorAmbient
+}
+
+local fullbrightEnabled = false
+local fbLoopConn
+
+-- утилита для привязки событий
+local function bind(event, fn)
+    local conn = event:Connect(function(...)
+        if running then fn(...) end
+    end)
+    table.insert(conns, conn)
+    return conn
+end
+
+-- включаем fullbright
+local function enableFullbright()
+    fullbrightEnabled = true
+    -- один раз применяем
+    Lighting.Brightness     = 2
+    Lighting.ClockTime      = 14
+    Lighting.GlobalShadows  = false
+    Lighting.Ambient        = Color3.new(1, 1, 1)
+    Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+    -- и в цикле удерживаем
+    fbLoopConn = RunService.Heartbeat:Connect(function()
+        if fullbrightEnabled then
+            Lighting.Brightness     = 2
+            Lighting.ClockTime      = 14
+            Lighting.GlobalShadows  = false
+            Lighting.Ambient        = Color3.new(1, 1, 1)
+            Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+        end
+    end)
+end
+
+-- возвращаем оригинальные настройки
+local function disableFullbright()
+    fullbrightEnabled = false
+    if fbLoopConn then
+        fbLoopConn:Disconnect()
+        fbLoopConn = nil
+    end
+    Lighting.Brightness     = original.Brightness
+    Lighting.ClockTime      = original.ClockTime
+    Lighting.GlobalShadows  = original.GlobalShadows
+    Lighting.Ambient        = original.Ambient
+    Lighting.OutdoorAmbient = original.OutdoorAmbient
+end
+
+-- создаём GUI
+local gui = Instance.new("ScreenGui")
+gui.Name         = "FullbrightGui"
+gui.ResetOnSpawn = false
+gui.Parent       = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame", gui)
+frame.Name             = "MainFrame"
+frame.Size             = UDim2.new(0, 240, 0, 80)
+frame.Position         = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(0, 5, 0)
+frame.BorderSizePixel  = 0
+
+local outline = Instance.new("UIStroke", frame)
+outline.Thickness    = 2
+outline.Color        = Color3.fromRGB(0, 255, 0)
+outline.Transparency = 0.4
+
+-- header для драггинга и кнопки закрытия
+local header = Instance.new("Frame", frame)
+header.Name             = "Header"
+header.Size             = UDim2.new(1, 0, 0, 24)
+header.Position         = UDim2.new(0, 0, 0, 0)
+header.BackgroundTransparency = 1
+header.Active           = true
+
+local title = Instance.new("TextLabel", header)
+title.Text                  = "▢ FULLBRIGHT HACK"
+title.Size                  = UDim2.new(1, -32, 1, 0)
+title.Position              = UDim2.new(0, 8, 0, 0)
+title.BackgroundTransparency = 1
+title.TextColor3            = Color3.fromRGB(0, 255, 0)
+title.Font                  = Enum.Font.Code
+title.TextSize              = 18
+title.TextXAlignment        = Enum.TextXAlignment.Left
+
+-- кнопка закрытия
+local closeBtn = Instance.new("TextButton", header)
+closeBtn.Name             = "CloseBtn"
+closeBtn.Text             = "✕"
+closeBtn.Size             = UDim2.new(0, 24, 0, 24)
+closeBtn.Position         = UDim2.new(1, -28, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 0, 0)
+closeBtn.BorderSizePixel  = 0
+closeBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
+closeBtn.Font             = Enum.Font.Code
+closeBtn.TextSize         = 18
+
+-- кнопка toggler
+local toggleBtn = Instance.new("TextButton", frame)
+toggleBtn.Name             = "ToggleBtn"
+toggleBtn.Text             = "FULLBRIGHT: OFF"
+toggleBtn.Size             = UDim2.new(0, 200, 0, 30)
+toggleBtn.Position         = UDim2.new(0, 20, 0, 28)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 15, 0)
+toggleBtn.BorderSizePixel  = 0
+toggleBtn.TextColor3       = Color3.fromRGB(255, 0, 0)
+toggleBtn.Font             = Enum.Font.Code
+toggleBtn.TextSize         = 18
+
+-- логика переключения Fullbright
+bind(toggleBtn.MouseButton1Click, function()
+    if fullbrightEnabled then
+        toggleBtn.Text             = "FULLBRIGHT: OFF"
+        toggleBtn.TextColor3       = Color3.fromRGB(255, 0, 0)
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 15, 0)
+        disableFullbright()
+    else
+        toggleBtn.Text             = "FULLBRIGHT: ON"
+        toggleBtn.TextColor3       = Color3.fromRGB(0, 255, 0)
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 10, 0)
+        enableFullbright()
+    end
+end)
+
+-- закрытие панели
+bind(closeBtn.MouseButton1Click, function()
+    running = false
+    if fullbrightEnabled then
+        disableFullbright()
+    end
+    for _, c in ipairs(conns) do
+        c:Disconnect()
+    end
+    gui:Destroy()
+    script:Destroy()
+end)
+
+-- перетаскивание окна
+local dragging, dragInput, dragStart, startPos
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    frame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+bind(header.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+bind(header.InputChanged, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+bind(UserInput.InputChanged, function(input)
+    if dragging and input == dragInput then
+        updateDrag(input)
+    end
+end)
+
+-- психо-фликер обводки
+task.spawn(function()
+    while running and RunService.Heartbeat:Wait() do
+        outline.Transparency = 0.3 + math.noise(tick() * 5) * 0.2
+    end
+end)
